@@ -1,0 +1,14 @@
+# --- Julia Specifics ---
+# Crash logs often generated if Julia aborts
+*.jl.cov
+*.jl.mem
+*.ji
+
+# --- System/OS ---
+.DS_Store
+Thumbs.db
+
+# --- User/IDE specific ---
+.vscode/
+.idea/
+notebooks/profile/
