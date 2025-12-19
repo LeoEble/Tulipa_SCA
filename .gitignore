@@ -3,6 +3,7 @@
 *.jl.cov
 *.jl.mem
 *.ji
+Manifest.toml
 
 # --- System/OS ---
 .DS_Store
@@ -12,3 +13,11 @@ Thumbs.db
 .vscode/
 .idea/
 notebooks/profile/
+
+# --- model files ---
+*.lp
+*.mps
+
+# --- database files ---
+*.db
+*.db.wal
