@@ -1,0 +1,4 @@
+id,asset,milestone_year,investment_integer_storage_energy,capacity_storage_energy,investment_limit_storage_energy,solution
+1,battery,2030,false,40.0,,-0.0
+2,H2_storage,2030,false,0.0,,-0.0
+3,CH3OH_storage,2030,false,240.0,,52.8664909352651
