@@ -86,7 +86,7 @@ This will download and install all required dependencies listed in `Project.toml
 - `TulipaClustering` (v0.5) — Temporal clustering tools
 - `DuckDB` — In-memory database
 - `HiGHS` — Open-source linear programming solver
-- `Plots` — Visualization library
+- `CairoMakie` — Visualization library
 - `DataFrames` — Data manipulation
 
 ### 3. Run the Script
@@ -155,6 +155,8 @@ After running the script, the `outputs/` folder contains:
 | `assets_investment.png` | Bar chart of investment decisions |
 | `total_flow.png` | Bar chart of aggregated flows |
 | `storage_level.png` | Storage level visualization |
+| `flows.png` | A set of line charts that exhibit operations |
+
 
 ---
 

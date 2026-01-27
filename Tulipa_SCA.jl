@@ -4,18 +4,22 @@ import TulipaEnergyModel as TEM
 import TulipaClustering as TC
 using DuckDB
 using DataFrames
-using Plots
+using Markdown
+using CairoMakie
 using HiGHS
+using Dates
 
-include("utils/utils.jl") # include auxiliary functions
+include("utils/utils.jl") # include auxiliary functions 
 
 # 2. Set up the connection and read the data and create the database
 connection = DBInterface.connect(DuckDB.DB, "data/db/sca.db")
 input_dir = "data/raw"
 output_dir = "outputs"
-rm(output_dir; force=true, recursive=true) # remove existing output directory (to ensure delete old results)
-mkdir(output_dir)                          # create output directory
+#rm(output_dir; force=true, recursive=true) # remove existing output directory (to ensure delete old results)
+#mkdir(output_dir)                          # create output directory
 TIO.read_csv_folder(connection, input_dir)
+
+plot_asset_flow(connection)
 
 # 3. Transform the profiles data from wide to long
 profiles_wide_df = TIO.get_table(connection, "profiles_wide")
@@ -45,9 +49,12 @@ energy_problem = TEM.run_scenario(connection;
 )
 
 # 6. Plot results
-plot_investments(connection; output_dir, file_name="assets_investment")
-plot_total_flow(connection; output_dir, file_name="total_flow")
-plot_storage(connection; output_dir, file_name="storage_level")
+data_cache = fetch_plotting_data(connection)
+
+plot_investments(data_cache; output_dir, file_name="assets_investment")
+plot_total_flow(data_cache; output_dir, file_name="total_flow")
+plot_storage(data_cache; output_dir, file_name="storage_level")
+plot_operations_mass_balance(data_cache; output_dir, file_name="flows")
 
 # Close the connection
 DBInterface.close(connection)

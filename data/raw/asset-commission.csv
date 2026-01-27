@@ -1,12 +1,12 @@
 asset,commission_year,investment_cost,investment_limit,conversion_efficiency,storage_charging_efficiency,storage_discharging_efficiency
-wind,2030,1200000,,0,0,0
+wind,2030,2500000,,0,0,0
 solar,2030,500000,,0,0,0
 market,2030,0.0,,0,0,0
 battery,2030,250000,,0,0.9,0.9
-electrolizer,2030,2000000,,0.0165,0,0
+electrolyzer,2030,2000000,,0.0165,0,0
 H2_storage,2030,600000,,0,1,1
 H2_hub,2030,0.0,,0,0,0
 CH3OH_synthesis,2030,30,,1,0,0
 CO2,2030,0.0,,0,0,0
 CH3OH_demand,2030,0.0,,0,0,0
-CH3OH_storage,2030,100,,0,1,1
+CH3OH_storage,2030,100,1000,0,1,1
