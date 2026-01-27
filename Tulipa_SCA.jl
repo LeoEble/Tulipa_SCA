@@ -19,7 +19,8 @@ output_dir = "outputs"
 #mkdir(output_dir)                          # create output directory
 TIO.read_csv_folder(connection, input_dir)
 
-plot_asset_flow(connection)
+# Plot the asset flow chart
+plot_asset_flow(connection; output_dir, file_name="asset_flow_chart")
 
 # 3. Transform the profiles data from wide to long
 profiles_wide_df = TIO.get_table(connection, "profiles_wide")

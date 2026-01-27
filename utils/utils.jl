@@ -1,7 +1,7 @@
 # Auxiliary functions for Tulipa_SCA.jl
 
 # ==========================================
-# 0. HELPER FUNCTIONS
+# HELPER FUNCTIONS
 # ==========================================
 function fetch_plotting_data(connection)
     return Dict(
@@ -36,7 +36,7 @@ function plot_asset_flow(connection; output_dir=nothing, file_name="asset_flow")
     df = TIO.get_table(connection, "flow") 
 
     # 2. Build the Mermaid String
-    mermaid_str = "graph LR\n"
+    mermaid_str = ":::mermaid\ngraph LR;\n"
     
     # Iterate through the DataFrame rows
     for row in eachrow(df)
@@ -44,11 +44,16 @@ function plot_asset_flow(connection; output_dir=nothing, file_name="asset_flow")
         # Clean names if necessary (e.g. replace spaces with underscores)
         u = row.from_asset
         v = row.to_asset
-        mermaid_str *= "    $u --> $v\n"
+        mermaid_str *= "    $u-->$v;\n"
     end
 
-    open("flow_chart.md", "w") do io
-        write(io, mermaid_str)
+    mermaid_str *= ":::\n"
+
+    if output_dir !== nothing
+        mkpath(output_dir)
+        open(joinpath(output_dir, "$(file_name).md"), "w") do io
+            write(io, mermaid_str)
+        end
     end
 end
 

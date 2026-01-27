@@ -45,6 +45,13 @@ The case study models a **green methanol production system** projected to the ye
 
 🚧 Under construction 🚧
 
+#### How to view the topology diagram
+
+1. Run the script to generate the `asset_flow_chart.md` file.
+2. Install the **[Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)** extension in VSCode.
+3. Open `asset_flow_chart.md` in VSCode.
+4. Open the Markdown Preview (`Ctrl+Shift+V` or `Cmd+Shift+V`) to see the interactive flow and connection diagram.
+
 #### Key Input Data
 
 - **Temporal Resolution**: 8760 hourly timesteps (full year 2030)
@@ -135,6 +142,7 @@ Tulipa_SCA/
 │   ├── var_assets_investment.csv
 │   ├── var_flow.csv
 │   ├── var_storage_level_rep_period.csv
+│   ├── asset_flow_chart.md # Mermaid topology diagram
 │   └── *.png              # Visualization plots
 └── utils/
     └── utils.jl           # Plotting helper functions
@@ -156,7 +164,7 @@ After running the script, the `outputs/` folder contains:
 | `total_flow.png` | Bar chart of aggregated flows |
 | `storage_level.png` | Storage level visualization |
 | `flows.png` | A set of line charts that exhibit operations |
-
+| `asset_flow_chart.md` | Mermaid diagram source for topological preview |
 
 ---
 
