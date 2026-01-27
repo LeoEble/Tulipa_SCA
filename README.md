@@ -41,9 +41,10 @@ The case study models a **green methanol production system** projected to the ye
 | **CH3OH Storage** | Methanol buffer storage |
 | **CH3OH Demand** | Final methanol demand |
 
-#### Energy Flow Diagram
+#### Asset Flow Diagram
 
-🚧 Under construction 🚧
+<img width="6345" height="1305" alt="Untitled diagram-2026-01-27-193016" src="https://github.com/user-attachments/assets/4c043964-d7e8-425e-aef5-25bd816129a6" />
+
 
 #### How to view the topology diagram
 
