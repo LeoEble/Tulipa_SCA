@@ -40,7 +40,18 @@ optimizer = HiGHS.Optimizer
 parameters = Dict(
     "output_flag" => true,
     "user_objective_scale" => -5,
+    "mip_rel_gap" => 0.01,
 )
+
+"""
+using Gurobi
+optimizer = Gurobi.Optimizer
+parameters = Dict(
+    "OutputFlag" => 1,
+    "MIPGap" => 0.01,
+)
+"""
+
 energy_problem = TEM.run_scenario(connection;
     output_folder=output_dir,
     optimizer=optimizer,
