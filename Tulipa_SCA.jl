@@ -7,6 +7,7 @@ using DataFrames
 using Markdown
 using CairoMakie
 using HiGHS
+using Gurobi
 using Dates
 
 include("utils/utils.jl") # include auxiliary functions 
@@ -36,21 +37,18 @@ TC.dummy_cluster!(connection)
 # 5. Populate default values and run the energy model
 TEM.populate_with_defaults!(connection)
 
-optimizer = HiGHS.Optimizer
-parameters = Dict(
-    "output_flag" => true,
-    "user_objective_scale" => -5,
-    "mip_rel_gap" => 0.01,
-)
+# optimizer = HiGHS.Optimizer
+# parameters = Dict(
+#     "output_flag" => true,
+#     "user_objective_scale" => -5,
+#     "mip_rel_gap" => 0.01,
+# )
 
-"""
-using Gurobi
 optimizer = Gurobi.Optimizer
 parameters = Dict(
     "OutputFlag" => 1,
     "MIPGap" => 0.01,
 )
-"""
 
 energy_problem = TEM.run_scenario(connection;
     output_folder=output_dir,
