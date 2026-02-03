@@ -9,8 +9,8 @@ battery,electrolyzer,2030,1.0
 electrolyzer,H2_storage,2030,1.0
 H2_storage,H2_hub,2030,1.0
 electrolyzer,H2_hub,2030,1.0
-H2_hub,CH3OH_synthesis,2030,0.2
+H2_hub,CH3OH_synthesis,2030,1
 CH3OH_synthesis,CH3OH_demand,2030,1.0
 CH3OH_storage,CH3OH_demand,2030,1.0
-CO2,CH3OH_synthesis,2030,1.4
+CO2,CH3OH_synthesis,2030,1
 CH3OH_synthesis,CH3OH_storage,2030,1.0

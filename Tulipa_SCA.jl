@@ -14,7 +14,7 @@ include("utils/utils.jl") # include auxiliary functions
 
 # 2. Set up the connection and read the data and create the database
 connection = DBInterface.connect(DuckDB.DB, "data/db/sca.db")
-input_dir = "data/raw"
+input_dir = "data/raw/methanol_v01"
 output_dir = "outputs"
 #rm(output_dir; force=true, recursive=true) # remove existing output directory (to ensure delete old results)
 #mkdir(output_dir)                          # create output directory
