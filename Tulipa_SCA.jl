@@ -1,3 +1,9 @@
+# 0. Setup the environment and install packages (only need to do this once or when there are changes to the dependencies in the Project.toml file)
+#using Pkg: Pkg       # Julia package manager
+#Pkg.activate(".")    # Creates and activates the project in the new folder - notice it creates Project.toml and Manifest.toml in your folder for reproducibility
+#Pkg.update()         # Update the package registry to ensure we have the latest versions of packages
+#Pkg.instantiate()    # Install the packages specified in the Project.toml file
+
 # 1. Import packages
 import TulipaIO as TIO
 import TulipaEnergyModel as TEM
