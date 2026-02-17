@@ -1,0 +1,3 @@
+from_asset,to_asset,year,profile_type,profile_name
+market,battery,2030,commodity_price,market_price
+market,electrolyzer,2030,commodity_price,market_price
