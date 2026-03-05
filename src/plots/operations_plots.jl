@@ -1,108 +1,6 @@
-# Auxiliary functions for Tulipa_SCA.jl
-
 # ==========================================
-# HELPER FUNCTIONS
+# Operations plotting functions
 # ==========================================
-function fetch_plotting_data(connection)
-    return Dict(
-        :investments => TIO.get_table(connection, "var_assets_investment"),
-        :flows       => TIO.get_table(connection, "var_flow"),
-        :storage     => TIO.get_table(connection, "var_storage_level_rep_period")
-    )
-end
-
-# Helper function to sum flows for a list of edges
-function get_aggregated_flow(df, edges)
-        subset = filter(row -> any((row.from_asset == u && row.to_asset == v) for (u, v) in edges), df)
-        if isempty(subset)
-            return DataFrame(time_block_start = eltype(df.time_block_start)[], value = Float64[])
-        end
-        gdf = groupby(subset, :time_block_start)
-        return combine(gdf, :solution => sum => :value)
-    end
-
-# Helper for storage
-function get_storage_level(df, asset_name)
-    subset = filter(row -> row.asset == asset_name, df)
-    if isempty(subset)
-            return DataFrame(time_block_start = eltype(df.time_block_start)[], value = Float64[])
-    end
-    return select(subset, :time_block_start, :solution => :value)
-end
-
-function plot_asset_flow(connection; output_dir=nothing, file_name="asset_flow")
-    # 1. Fetch data directly from DuckDB using your TIO wrapper
-    #    (Assuming the table in DuckDB is named "flow" or "flows")
-    df = TIO.get_table(connection, "flow") 
-
-    # 2. Build the Mermaid String
-    mermaid_str = ":::mermaid\ngraph LR;\n"
-    
-    # Iterate through the DataFrame rows
-    for row in eachrow(df)
-        # Using string interpolation to create connections
-        # Clean names if necessary (e.g. replace spaces with underscores)
-        u = row.from_asset
-        v = row.to_asset
-        mermaid_str *= "    $u-->$v;\n"
-    end
-
-    mermaid_str *= ":::\n"
-
-    if output_dir !== nothing
-        mkpath(output_dir)
-        open(joinpath(output_dir, "$(file_name).md"), "w") do io
-            write(io, mermaid_str)
-        end
-    end
-end
-
-# ==========================================
-# Plotting functions
-# ==========================================
-
-function plot_investments(input_data; output_dir=nothing, file_name="assets_investment")
-    # Determine if input is a direct DataFrame, a cache Dict, or a DB connection
-    investments = if input_data isa DataFrame
-        input_data
-    elseif input_data isa Dict
-        input_data[:investments]
-    else
-        TIO.get_table(input_data, "var_assets_investment")
-    end
-    
-    # Filter out negligible investments to keep the plot clean
-    df_plot = filter(row -> row.solution * row.capacity > 1e-3, investments)
-    
-    if nrow(df_plot) == 0
-        @warn "No non-zero investments found."
-        return Figure()
-    end
-
-    # Calculate total investment and sort for the bar chart
-    df_plot[!, :total_inv] = df_plot.solution .* df_plot.capacity
-    sort!(df_plot, :total_inv, rev=false)
-    
-    # Dynamically size the figure height based on the number of assets
-    fig = Figure(size=(800, max(600, nrow(df_plot) * 20))) 
-    
-    ax = Axis(fig[1,1], 
-        title="Investment Results",
-        xlabel="Total Investment",
-        ylabel="Asset",
-        yticks = (1:nrow(df_plot), df_plot.asset)
-    )
-
-    barplot!(ax, 1:nrow(df_plot), df_plot.total_inv, direction=:x, color=:royalblue)
-    ylims!(ax, 0.5, nrow(df_plot) + 0.5)
-
-    if output_dir !== nothing
-        mkpath(output_dir)
-        save(joinpath(output_dir, "$(file_name).png"), fig)
-    end
-    return fig
-end
-
 function plot_total_flow(input_data; output_dir=nothing, file_name="total_flow")
     df_flow = if input_data isa DataFrame
         input_data
@@ -181,32 +79,38 @@ function plot_storage(input_data; output_dir=nothing, file_name="storage_level")
     return fig
 end
 
-function plot_operations_mass_balance(input_data; output_dir=nothing, file_name="operations_mass_balance")
+function plot_operations_mass_balance(input_data; output_dir=nothing, file_name="operations_mass_balance", summerdays = [164, 165], winterdays = [345, 346], year=nothing)
 
     # ==========================================
-    # 1. DATA UNPACKING
+    # 1. DATA ACCESS (Using the robust reconstruction)
     # ==========================================
-    if input_data isa Dict
-        df_flows   = input_data[:flows]
-        df_storage = input_data[:storage]
+    df_flows_long = if haskey(input_data, "var_flow_8760")
+        input_data["var_flow_8760"]
     else
-        df_flows   = TIO.get_table(input_data, "var_flow")
-        df_storage = TIO.get_table(input_data, "var_storage_level_rep_period")
+        reconstruct_to_timeframe(input_data, "var_flow"; year=year)
+    end
+
+    df_storage_long = if haskey(input_data, "var_storage_8760")
+        input_data["var_storage_8760"]
+    elseif haskey(input_data, "var_storage_level_clustered_year")
+        reconstruct_to_timeframe(input_data, "var_storage_level_clustered_year"; year=year)
+    else
+        reconstruct_to_timeframe(input_data, "var_storage_level_rep_period"; year=year)
     end
 
     # ==========================================
-    # 2. MAPPING
+    # 2. MAPPING DEFINITIONS
     # ==========================================
     flow_map = Dict(
-        "e_res" => [("wind", "battery"), ("wind", "electrolyzer"), ("solar", "battery"), ("solar", "electrolyzer")],
-        "e_battery" => [("battery", "electrolyzer")], 
-        "e_grid_buy" => [("market", "battery"), ("market", "electrolyzer")],
-        "e_electrolyzer" => [("wind", "electrolyzer"), ("solar", "electrolyzer"), ("market", "electrolyzer"), ("battery", "electrolyzer")], 
-        "h_electrolyzer_out" => [("electrolyzer", "H2_storage"), ("electrolyzer", "H2_hub")],
-        "h_demand_feed" => [("H2_hub", "CH3OH_synthesis")],
-        "m_methanol_out" => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_synthesis", "CH3OH_storage")],
-        "m_co2_in" => [("CO2", "CH3OH_synthesis")],
-        "m_demand" => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_storage", "CH3OH_demand")]
+        "e_res"               => [("wind", "battery"), ("wind", "electrolyzer"), ("solar", "battery"), ("solar", "electrolyzer")],
+        "e_battery"           => [("battery", "electrolyzer")], 
+        "e_grid_buy"          => [("market", "battery"), ("market", "electrolyzer")],
+        "e_electrolyzer"      => [("wind", "electrolyzer"), ("solar", "electrolyzer"), ("market", "electrolyzer"), ("battery", "electrolyzer")], 
+        "h_electrolyzer_out"  => [("electrolyzer", "H2_storage"), ("electrolyzer", "H2_hub")],
+        "h_demand_feed"       => [("H2_hub", "CH3OH_synthesis")],
+        "m_methanol_out"      => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_synthesis", "CH3OH_storage")],
+        "m_co2_in"            => [("CO2", "CH3OH_synthesis")],
+        "m_demand"            => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_storage", "CH3OH_demand")]
     )
 
     storage_map = Dict(
@@ -216,50 +120,46 @@ function plot_operations_mass_balance(input_data; output_dir=nothing, file_name=
     )
 
     # ==========================================
-    # 3. DATA PROCESSING
+    # 3. DATA CONSOLIDATION
     # ==========================================
-    
-    # Handle Time Column
-    time_col = df_flows.time_block_start
-    unique_times = unique(time_col)
-    combined_data = DataFrame(datetime = unique_times)
+    all_timesteps = unique(vcat(df_flows_long.timestep, df_storage_long.timestep))
+    combined_data = DataFrame(timestep = sort(all_timesteps))
+    combined_data.real_datetime = DateTime(2024,1,1) .+ Hour.(combined_data.timestep .- 1)
 
-    # Create explicit DateTime objects (Reference Year 2024)
-    if eltype(unique_times) <: Integer
-        combined_data.real_datetime = DateTime(2024,1,1) .+ Hour.(combined_data.datetime .- 1)
-    else
-        combined_data.real_datetime = combined_data.datetime
+    function get_agg_flow(name, edges)
+        sub = subset(df_flows_long, [:from_asset, :to_asset] => ByRow((u, v) -> (u, v) in edges))
+        if isempty(sub)
+            return DataFrame(timestep = combined_data.timestep, Symbol(name) => zeros(length(combined_data.timestep)))
+        end
+        gdf = groupby(sub, :timestep)
+        return combine(gdf, :solution => sum => Symbol(name))
     end
 
-    # Merge Flows
     for (var_name, edges) in flow_map
-        agg_df = get_aggregated_flow(df_flows, edges)
-        rename!(agg_df, :value => Symbol(var_name))
-        combined_data = leftjoin(combined_data, agg_df, on=:datetime => :time_block_start)
+        agg_df = get_agg_flow(var_name, edges)
+        leftjoin!(combined_data, agg_df, on=:timestep)
     end
 
-    # Merge Storage
-    for (var_name, asset) in storage_map
-        st_df = get_storage_level(df_storage, asset)
-        rename!(st_df, :value => Symbol(var_name))
-        combined_data = leftjoin(combined_data, st_df, on=:datetime => :time_block_start)
-    end
-
-    # Fill Missing
-    for col in names(combined_data)
-        if col ∉ ["datetime", "real_datetime"]
-            combined_data[!, col] = coalesce.(combined_data[!, col], 0.0)
+    for (var_name, asset_id) in storage_map
+        sub = filter(row -> row.asset == asset_id, df_storage_long)
+        if !isempty(sub)
+            sub_to_join = sub[!, [:timestep, :solution]]
+            rename!(sub_to_join, :solution => Symbol(var_name))
+            leftjoin!(combined_data, sub_to_join, on=:timestep)
+        else
+            combined_data[!, Symbol(var_name)] .= 0.0
         end
     end
-    sort!(combined_data, :datetime)
+
+    for col in names(combined_data)
+        if col ∉ ["timestep", "real_datetime"]
+            combined_data[!, col] = Float64.(coalesce.(combined_data[!, col], 0.0))
+        end
+    end
 
     # ==========================================
     # 4. PLOTTING
     # ==========================================
-    
-    summerdays = [164, 165]
-    winterdays = [345, 346]
-    
     summerdata = filter(row -> dayofyear(row.real_datetime) in summerdays, combined_data)
     winterdata = filter(row -> dayofyear(row.real_datetime) in winterdays, combined_data)
 
@@ -284,17 +184,21 @@ function plot_operations_mass_balance(input_data; output_dir=nothing, file_name=
     ax_f_main = Axis(fig[3,2])
     ax_f_dual = Axis(fig[3,2], yaxisposition=:right, ylabel="MeOH SOC [kg]")
 
-    # Linking
+    # --- AXIS LINKING ---
     linkxaxes!(ax_a_main, ax_c_main, ax_e_main)
     linkxaxes!(ax_b_main, ax_d_main, ax_f_main)
+    
     linkyaxes!(ax_a_main, ax_b_main)
     linkyaxes!(ax_a_dual, ax_b_dual) 
+    
     linkyaxes!(ax_c_main, ax_d_main)
     linkyaxes!(ax_c_dual, ax_d_dual) 
+    
     linkyaxes!(ax_e_main, ax_f_main)
     linkyaxes!(ax_e_dual, ax_f_dual) 
 
-    # Cleanup Decorations
+    # --- CLEANUP DECORATIONS (Restored from your working version) ---
+    # This correctly implements the rule to strictly hide ticks and decorations for internal subplots
     for ax in [ax_a_main, ax_b_main, ax_c_main, ax_d_main] hidexdecorations!(ax, grid=false, ticks=false) end
     for ax in [ax_b_main, ax_d_main, ax_f_main] hideydecorations!(ax, grid=false, ticks=false) end
     for ax in [ax_a_dual, ax_c_dual, ax_e_dual] hideydecorations!(ax, grid=false, ticks=false) end
@@ -303,14 +207,12 @@ function plot_operations_mass_balance(input_data; output_dir=nothing, file_name=
     colortwin = :black
 
     # --- PLOTTING ROW 1 ---
-    # Added "e_battery" to cols1 as per your update
     cols1   = ["e_res", "e_battery", "e_electrolyzer", "e_grid_buy"] 
     labels1 = ["RES", "Battery Output", "Electrolyzer In", "Grid Buy"]
-    colors1 = [:gold, :orange, :dodgerblue3, :firebrick] # Added orange for battery
+    colors1 = [:gold, :orange, :dodgerblue3, :firebrick]
 
     if !isempty(summerdata)
         x_summer = datetime2unix.(summerdata.real_datetime)
-        # Explicit Matrix{Float64} conversion for robustness
         data1 = Matrix{Float64}(summerdata[:, cols1])' 
         
         series!(ax_a_main, x_summer, data1, labels=labels1, color=colors1)
@@ -370,21 +272,18 @@ function plot_operations_mass_balance(input_data; output_dir=nothing, file_name=
     Legend(fig[3,3], ax_e_main, valign=:top)
     Legend(fig[3,3], ax_e_dual, valign=:bottom)
 
-    # --- DATE FORMATTING ---
+    # --- DATE FORMATTING (Restored from your working version) ---
     for (data_segment, ax) in [(summerdata, ax_e_main), (winterdata, ax_f_main)]
         if !isempty(data_segment)
-            # find_unique days
             all_days = unique(Date.(data_segment.real_datetime))
             sort!(all_days)
 
-            # Add the "next" day to create a symmetrical end tick
             if !isempty(all_days)
                 push!(all_days, all_days[end] + Day(1))
             end
 
             midnights = DateTime.(all_days) 
             
-            # Explicitly convert to Vector{Float64} and Vector{String} to avoid conversion errors
             tick_values = Vector{Float64}(datetime2unix.(midnights))
             tick_labels = Vector{String}(Dates.format.(midnights, "dd-mm"))
             
@@ -392,7 +291,7 @@ function plot_operations_mass_balance(input_data; output_dir=nothing, file_name=
         end
     end
 
-    # Large Labels
+    # --- PANEL LABELS ---
     Label(fig[1,1,TopLeft()], "A", fontsize=26, font=:bold, padding=(0,5,5,0), halign=:right)
     Label(fig[1,2,TopLeft()], "B", fontsize=26, font=:bold, padding=(0,5,5,0), halign=:right)
     Label(fig[2,1,TopLeft()], "C", fontsize=26, font=:bold, padding=(0,5,5,0), halign=:right)
