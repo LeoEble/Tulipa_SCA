@@ -7,8 +7,8 @@ using Dates
 # ========================================================================================
 
 # PATHS
-input_folder = "data/raw/methanol_v01_short"   
-output_folder = "data/raw/methanol_menuapproach_v01"  
+input_folder = "data/raw/methanol_v01"
+output_folder = "data/raw/methanol_menuapproach_v01"
 
 struct MenuOption
     capacity::Float64
@@ -38,6 +38,53 @@ function create_range_options(; n_steps::Int, cap_range::Tuple, cost_range::Tupl
         e = eff_range[1] + (eff_range[2] - eff_range[1]) * frac
         
         push!(options, MenuOption(round(c, digits=2), round(cost, digits=2), round(e, digits=4)))
+    end
+    return options
+end
+
+# HELPER FUNCTION: Generates menu options centered on a linear solution result.
+# Uses a power-law scaling curve to model economies of scale:
+#   cost_per_unit(C) = ref_cost_per_unit * (C / ref_capacity)^(scale_exponent - 1)
+# With scale_exponent < 1, larger capacity → lower cost per unit.
+#
+# Arguments:
+#   center_capacity   : optimal capacity from the linear solve (MW, t/h, etc.)
+#   ref_capacity      : reference capacity used for cost calibration (e.g. original asset capacity)
+#   ref_cost_per_unit : cost per unit of output capacity at ref_capacity
+#   pct_range         : symmetric range around center, e.g. 0.25 = ±25%
+#   n_steps           : number of discrete options to generate
+#   scale_exponent    : economy-of-scale factor (0 < α < 1); 0.7 is a typical value
+#   eff_range         : (eff_min, eff_max) interpolated across options; use (missing, missing) for constant
+function generate_menu_around(;
+    center_capacity::Float64,
+    ref_capacity::Float64,
+    ref_cost_per_unit::Float64,
+    pct_range::Float64 = 0.25,
+    n_steps::Int = 5,
+    scale_exponent::Float64 = 0.7,
+    eff_range::Tuple = (missing, missing)
+)
+    cap_min = center_capacity * (1 - pct_range)
+    cap_max = center_capacity * (1 + pct_range)
+
+    n_steps < 2 && return [MenuOption(
+        round(center_capacity, digits=2),
+        round(ref_cost_per_unit * (center_capacity / ref_capacity)^(scale_exponent - 1), digits=2),
+        ismissing(eff_range[1]) ? missing : eff_range[1]
+    )]
+
+    options = MenuOption[]
+    for i in 1:n_steps
+        frac = (i - 1) / (n_steps - 1)
+        cap  = cap_min + (cap_max - cap_min) * frac
+        # Economies of scale: larger capacity → lower per-unit cost
+        cost = ref_cost_per_unit * (cap / ref_capacity)^(scale_exponent - 1)
+        eff  = if !ismissing(eff_range[1]) && !ismissing(eff_range[2])
+            eff_range[1] + (eff_range[2] - eff_range[1]) * frac
+        else
+            missing
+        end
+        push!(options, MenuOption(round(cap, digits=2), round(cost, digits=2), eff))
     end
     return options
 end

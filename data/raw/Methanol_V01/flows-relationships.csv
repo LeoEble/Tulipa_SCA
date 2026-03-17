@@ -1,2 +1,3 @@
 flow_1_from_asset,flow_1_to_asset,flow_2_from_asset,flow_2_to_asset,milestone_year,constant,ratio,sense
-CO2,CH3OH_synthesis,H2_hub,CH3OH_synthesis,2030,0.0,7.0,==
+CO2_hub,CH3OH_synthesis,H2_hub,CH3OH_synthesis,2030,0.0,7.210526316,==
+CO2_hub,CH3OH_synthesis,E_hub,CH3OH_synthesis,2030,0.0,2.490909091,==

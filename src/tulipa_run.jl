@@ -21,12 +21,12 @@ All plotting and post-processing should be done outside this function.
 function tulipa_run(db_path::AbstractString,
                     input_dir::AbstractString,
                     output_dir::AbstractString;
-                    optimizer = HiGHS.Optimizer,
+                    optimizer = Gurobi.Optimizer,
                     optimizer_parameters = Dict(
-                        "output_flag"      => true,
-                        "mip_rel_gap"      => 0.03,
-                        "threads"          => 0,
-                        "time_limit"       => 1800.0,
+                        "OutputFlag"   => 1,
+                        "MIPGap"       => 0.03,
+                        "Threads"      => 0,
+                        "TimeLimit"    => 1800.0,
                     ),
                     model_parameters_file::AbstractString = joinpath(input_dir, "model-parameters.toml"),
                     model_file_name::AbstractString = "sca_model.lp",

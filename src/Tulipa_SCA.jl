@@ -5,7 +5,7 @@ module Tulipa_SCA
     using DataFrames
     using CairoMakie
     using Dates
-    using HiGHS
+    using Gurobi
 
     import TulipaIO as TIO
     import TulipaEnergyModel as TEM
