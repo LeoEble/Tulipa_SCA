@@ -67,30 +67,6 @@ function main()
         # Fetch the raw data
         data_cache = TSCA.fetch_plotting_data(connection)
 
-        df = data_cache["var_storage_level_rep_period"]
-        rp_map = data_cache["rep_periods_mapping"]
-
-        println("\n=== DATA DIAGNOSTIC ===")
-        
-        # 1. Check for value existence
-        println("Years in Results: ", unique(df.year))
-        println("Years in Mapping: ", unique(rp_map.year))
-        
-        println("RPs in Results:   ", unique(df.rep_period))
-        println("RPs in Mapping:   ", unique(rp_map.rep_period))
-
-        # 2. Check for Type Mismatches (The #1 cause of 'empty joins')
-        println("\n=== TYPE DIAGNOSTIC ===")
-        println("Results Year Type: ", eltype(df.year))
-        println("Mapping Year Type: ", eltype(rp_map.year))
-        
-        println("Results RP Type:   ", eltype(df.rep_period))
-        println("Mapping RP Type:   ", eltype(rp_map.rep_period))
-        
-        # 3. Test a Manual Join
-        test_join = innerjoin(df[1:1, :], rp_map, on = [:year, :rep_period])
-        println("\nManual Join Test (1 row): ", isempty(test_join) ? "FAILED" : "SUCCESS")
-
         # Add "Hourly" versions to the cache (without deleting the originals)
         # This uses the reconstruction math once and stores the result
         @info "Expanding results to hourly timeframe..."
@@ -98,7 +74,7 @@ function main()
         data_cache["var_flow_8760"] = TSCA.reconstruct_to_timeframe(data_cache, "var_flow")
         data_cache["var_storage_8760"] = TSCA.reconstruct_to_timeframe(data_cache, "var_storage_level_rep_period")
 
-        # Cost-related plots
+# Cost-related plots
         # TSCA.plot_investment_costs(data_cache;
         #                  output_dir = output_dir,
         #                  file_name  = "assets_investment")
@@ -135,8 +111,6 @@ function main()
         DBInterface.close(connection)
     end
 end
-
-
 
 # Run when this file is executed as a script
 main()

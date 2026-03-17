@@ -4,11 +4,9 @@ module Tulipa_SCA
     using DuckDB
     using DataFrames
     using CairoMakie
-    using Distances
     using Dates
-    using Gurobi
     using HiGHS
-    
+
     import TulipaIO as TIO
     import TulipaEnergyModel as TEM
     import TulipaClustering as TC

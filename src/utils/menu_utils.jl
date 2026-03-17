@@ -135,11 +135,21 @@ function generate_menu_tables(
         filter!(row -> row.asset != base_asset_name, new_asset_milestone)
 
         # 2. Grab base rows
-        # Note: We assume the base asset exists, hence [1, :]
-        base_row_asset = filter(row -> row.asset == base_asset_name, df_asset)[1, :]
-        base_row_both  = filter(row -> row.asset == base_asset_name, df_asset_both)[1, :]
-        base_row_comm  = filter(row -> row.asset == base_asset_name, df_asset_commission)[1, :]
-        base_row_mile  = filter(row -> row.asset == base_asset_name, df_asset_milestone)[1, :]
+        _rows_asset = filter(row -> row.asset == base_asset_name, df_asset)
+        _rows_both  = filter(row -> row.asset == base_asset_name, df_asset_both)
+        _rows_comm  = filter(row -> row.asset == base_asset_name, df_asset_commission)
+        _rows_mile  = filter(row -> row.asset == base_asset_name, df_asset_milestone)
+
+        for (tbl, rows) in [("asset", _rows_asset), ("asset-both", _rows_both),
+                             ("asset-commission", _rows_comm), ("asset-milestone", _rows_mile)]
+            isempty(rows) && error("Asset '$base_asset_name' not found in table '$tbl'. " *
+                                   "Check menu_config keys match asset names in the input CSVs.")
+        end
+
+        base_row_asset = _rows_asset[1, :]
+        base_row_both  = _rows_both[1, :]
+        base_row_comm  = _rows_comm[1, :]
+        base_row_mile  = _rows_mile[1, :]
 
         for (i, opt) in enumerate(options)
             new_name = "$(base_asset_name)_option_$(i)"

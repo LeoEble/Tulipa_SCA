@@ -1,5 +1,6 @@
 # src/tulipa_run.jl
 # This file is included from Tulipa_SCA.jl and lives in the Tulipa_SCA namespace.
+import Distances
 
 """
     tulipa_run(db_path, input_dir, output_dir; kwargs...) -> energy_problem
@@ -20,12 +21,12 @@ All plotting and post-processing should be done outside this function.
 function tulipa_run(db_path::AbstractString,
                     input_dir::AbstractString,
                     output_dir::AbstractString;
-                    optimizer = Gurobi.Optimizer,
+                    optimizer = HiGHS.Optimizer,
                     optimizer_parameters = Dict(
-                        "OutputFlag" => 1,
-                        "MIPGap"     => 0.03,
-                        "Threads"    => 0,
-                        "TimeLimit"  => 1800,
+                        "output_flag"      => true,
+                        "mip_rel_gap"      => 0.03,
+                        "threads"          => 0,
+                        "time_limit"       => 1800.0,
                     ),
                     model_parameters_file::AbstractString = joinpath(input_dir, "model-parameters.toml"),
                     model_file_name::AbstractString = "sca_model.lp",
@@ -42,8 +43,6 @@ function tulipa_run(db_path::AbstractString,
 
         # 3. Transform profiles_wide -> profiles (long)
         @info "Transforming profiles_wide -> profiles (long)"
-        profiles_wide_df = TIO.get_table(connection, "profiles_wide")
-        # Not used directly, but good for sanity checks if needed
         TC.transform_wide_to_long!(
             connection,
             "profiles_wide",

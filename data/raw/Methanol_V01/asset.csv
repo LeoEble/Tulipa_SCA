@@ -8,5 +8,7 @@ H2_storage,storage,10,simple,false,20,20,0.075,10,true,true,false,,,false,false,
 CH3OH_storage,storage,10,simple,false,20,20,0.075,240,true,true,false,,,false,false,,
 H2_hub,consumer,1,none,false,0,0,0.0,0,false,false,false,,,false,false,,
 CH3OH_synthesis,conversion,10,simple,true,20,20,0.075,0,false,false,true,basic,0.2,true,true,0.4,0.4
-CO2,producer,100,none,false,0,0,0.0,0,false,false,false,,,false,false,,
+DAC,producer,100,none,false,0,0,0.0,0,false,false,false,,,false,false,,
 CH3OH_demand,consumer,1,none,false,0,0,0.0,0,false,false,false,,,false,false,,
+CO2_hub,consumer,1,none,false,0,0,0.0,0,false,false,false,,,false,false,,
+CH3OH_storage,storage,10,simple,false,20,20,0.075,240,true,true,false,,,false,false,,

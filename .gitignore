@@ -11,8 +11,15 @@ Thumbs.db
 
 # --- User/IDE specific ---
 .vscode/
+.claude/
 .idea/
 notebooks/profile/
+references/
+Testing/
+data/personal/
+data/confidential/
+outputs/
+
 
 # --- model files ---
 *.lp
