@@ -93,10 +93,10 @@ function plot_operations_mass_balance(input_data;
     winterdays  = [345, 346],
     year        = nothing,
     flow_map    = Dict(
-        "e_res"               => [("wind", "battery"), ("wind", "electrolyzer"), ("solar", "battery"), ("solar", "electrolyzer")],
-        "e_battery"           => [("battery", "electrolyzer")],
-        "e_grid_buy"          => [("market", "battery"), ("market", "electrolyzer")],
-        "e_electrolyzer"      => [("wind", "electrolyzer"), ("solar", "electrolyzer"), ("market", "electrolyzer"), ("battery", "electrolyzer")],
+        "e_res"               => [("wind", "battery"), ("wind", "E_hub"), ("solar", "battery"), ("solar", "E_hub")],
+        "e_battery"           => [("battery", "E_hub")],
+        "e_grid_buy"          => [("market", "battery"), ("market", "E_hub")],
+        "e_electrolyzer"      => [("E_hub", "electrolyzer")],
         "h_electrolyzer_out"  => [("electrolyzer", "H2_storage"), ("electrolyzer", "H2_hub")],
         "h_demand_feed"       => [("H2_hub", "CH3OH_synthesis")],
         "m_methanol_out"      => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_synthesis", "CH3OH_storage")],
@@ -137,7 +137,7 @@ function plot_operations_mass_balance(input_data;
     function get_agg_flow(name, edges)
         sub = subset(df_flows_long, [:from_asset, :to_asset] => ByRow((u, v) -> (u, v) in edges))
         if isempty(sub)
-            return DataFrame(timestep = combined_data.timestep, Symbol(name) => zeros(length(combined_data.timestep)))
+            return DataFrame(:timestep => combined_data.timestep, Symbol(name) => zeros(length(combined_data.timestep)))
         end
         gdf = groupby(sub, :timestep)
         return combine(gdf, :solution => sum => Symbol(name))

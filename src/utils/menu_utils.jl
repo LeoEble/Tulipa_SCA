@@ -7,12 +7,12 @@ using Dates
 # ========================================================================================
 
 # PATHS
-input_folder = "data/raw/methanol_v01"
-output_folder = "data/raw/methanol_menuapproach_v01"
+input_folder = "data/raw/electrolysis_v01"
+output_folder = "data/raw/electrolysis_menuapproach_v01"
 
 struct MenuOption
     capacity::Float64
-    capex_per_unit::Float64
+    investment_cost::Float64
     efficiency::Union{Float64, Missing}
 end
 
@@ -94,25 +94,16 @@ end
 # ========================================================================================
 
 menu_config = Dict(
-     
-    # EXAMPLE 1: Electrolyzer
-    # We want 5 options ranging from 10MW to 100MW.
-    # Cost drops from 4000 to 2500 EUR/kW.
-    # Efficiency improves from 60% to 70%.
-    "electrolyzer" => create_range_options(
-        n_steps = 5,
-        cap_range = (10.0, 150.0),    # Min Cap -> Max Cap
-        cost_range = (130000000*1.2, 130000000*0.8), # High Cost -> Low Cost (Economies of scale)
-        eff_range = (0.017, 0.015)      # Low Eff -> High Eff
-    ),
 
-    # EXAMPLE 2: Methanol Synthesis
-    # 3 options, cost drops slightly, efficiency stays flat (1.0 to 1.0)
-    "CH3OH_synthesis" => create_range_options(
-        n_steps = 5,
-        cap_range = (10.0, 50.0),
-        cost_range = (7000000*1.2, 7000000*0.8),
-        eff_range = (0.637, 0.637)
+    # Electrolyzer — electrolysis_v01 case
+    # Original: capacity=2 t/h, investment_cost=137_500_000 EUR/(t/h), investment_limit=20
+    # cost_range in EUR/(t/h): ±20% around reference (larger plant → lower per-unit cost)
+    # cap_range in t/h: covers the original range (2 t/h × 20 units = 40 t/h max)
+    "electrolyzer" => create_range_options(
+        n_steps    = 50,
+        cap_range  = (20, 100.0),                                    # t/h: Min -> Max
+        cost_range = (137_500_000 * 1.1, 137_500_000 * 0.9),         # EUR/(t/h): High -> Low
+        eff_range  = (0.021, 0.021)                                   # Efficiency flat
     )
 )
 
@@ -220,8 +211,8 @@ function generate_menu_tables(
             # Asset-commission.csv
             changes_comm = Dict{Symbol, Any}(
                 :asset => new_name,
-                :investment_limit => 1.0, 
-                :investment_cost => opt.capacity * opt.capex_per_unit
+                :investment_limit => opt.capacity,   # floor(cap/cap) = 1 unit max
+                :investment_cost => opt.investment_cost
             )
             if !ismissing(opt.efficiency)
                 changes_comm[:conversion_efficiency] = opt.efficiency
@@ -303,5 +294,15 @@ CSV.write(joinpath(output_folder, "flow.csv"), out_flow)
 CSV.write(joinpath(output_folder, "flow-commission.csv"), out_flow_comm)
 CSV.write(joinpath(output_folder, "flow-milestone.csv"), out_flow_mile)
 CSV.write(joinpath(output_folder, "flows-relationships.csv"), out_rel)
+
+# Copy all remaining files that are not transformed (profiles, parameters, etc.)
+transformed = Set(["asset.csv", "asset-both.csv", "asset-commission.csv", "asset-milestone.csv",
+                   "flow.csv", "flow-commission.csv", "flow-milestone.csv", "flows-relationships.csv"])
+for fname in readdir(input_folder)
+    if !(fname in transformed)
+        cp(joinpath(input_folder, fname), joinpath(output_folder, fname); force=true)
+        println("  Copied: $fname")
+    end
+end
 
 println("Success! Menu options generated.")

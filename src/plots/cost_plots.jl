@@ -23,7 +23,7 @@ function _compute_annualized_costs(input_data)
     df_p = leftjoin(df_p,
         select(df_commission, :asset, :commission_year, :investment_cost),
         on = [:asset, :milestone_year => :commission_year], makeunique=true)
-    df_p[!, :inv_power_ann] = df_p.solution .* df_p.capacity .* coalesce.(df_p.investment_cost, 0.0) .* df_p.crf
+    df_p[!, :inv_power_ann] = df_p.solution .* df_p.capacity .* coalesce.(df_p.investment_cost, 0.0) .* coalesce.(df_p.crf, 1.0)
     capex_power = combine(groupby(df_p, :asset), :inv_power_ann => sum => :inv_power_ann)
 
     # Energy CAPEX (storage)
@@ -32,15 +32,26 @@ function _compute_annualized_costs(input_data)
     df_e = leftjoin(df_e,
         select(df_commission, :asset, :commission_year, :investment_cost_storage_energy),
         on = [:asset, :milestone_year => :commission_year], makeunique=true)
-    df_e[!, :inv_energy_ann] = df_e.solution .* df_e.capacity_storage_energy .* coalesce.(df_e.investment_cost_storage_energy, 0.0) .* df_e.crf
+    df_e[!, :inv_energy_ann] = df_e.solution .* df_e.capacity_storage_energy .* coalesce.(df_e.investment_cost_storage_energy, 0.0) .* coalesce.(df_e.crf, 1.0)
     capex_energy = combine(groupby(df_e, :asset), :inv_energy_ann => sum => :inv_energy_ann)
 
-    # Variable OPEX
-    df_f = select(df_flows, :from_asset, :to_asset, :year, :solution)
+    # Rep-period weights: sum of convex weights per (year, rep_period) → annualisation factor
+    df_rep_map   = get_df(input_data, "rep_periods_mapping")
+    df_rp_weights = combine(groupby(df_rep_map, [:year, :rep_period]),
+                            :weight => sum => :rp_weight)
+
+    # Variable OPEX (weighted by rep-period to give annual €/year)
+    rp_col = "rep_period" in names(df_flows) ? [:rep_period] : Symbol[]
+    df_f = select(df_flows, :from_asset, :to_asset, :year, rp_col..., :solution)
+    if !isempty(rp_col)
+        df_f = leftjoin(df_f, df_rp_weights, on = [:year, :rep_period])
+    else
+        df_f[!, :rp_weight] = ones(nrow(df_f))
+    end
     df_f = leftjoin(df_f,
         select(df_flow_milestone, :from_asset, :to_asset, :milestone_year, :operational_cost),
         on = [:from_asset, :to_asset, :year => :milestone_year], makeunique=true)
-    df_f[!, :opex_ann] = df_f.solution .* coalesce.(df_f.operational_cost, 0.0)
+    df_f[!, :opex_ann] = df_f.solution .* coalesce.(df_f.rp_weight, 1.0) .* coalesce.(df_f.operational_cost, 0.0)
     opex = combine(groupby(df_f, :from_asset), :opex_ann => sum => :opex_ann)
     rename!(opex, :from_asset => :asset)
 
@@ -50,18 +61,18 @@ function _compute_annualized_costs(input_data)
     df_total = leftjoin(df_total, opex,         on = :asset, makeunique=true)
     df_total.inv_energy_ann .= coalesce.(df_total.inv_energy_ann, 0.0)
     df_total.opex_ann       .= coalesce.(df_total.opex_ann, 0.0)
-    df_total[!, :total_annual_cost] = df_total.inv_power_ann .+ df_total.inv_energy_ann .+ df_total.opex_ann
+    df_total[!, :total_annual_cost] = coalesce.(df_total.inv_power_ann, 0.0) .+ df_total.inv_energy_ann .+ df_total.opex_ann
 
-    return df_total, df_p   # also return df_p for capacity lookups in LCOx
+    return df_total, df_p, df_rp_weights   # also return df_p for capacity lookups in LCOx
 end
 
 # ==========================================
 # Cost breakdown bar chart (per asset, stacked CAPEX + OPEX)
 # ==========================================
 function plot_investment_costs(input_data; output_dir=nothing, file_name="annualized_costs_breakdown")
-    df_total, _ = _compute_annualized_costs(input_data)
+    df_total, _, _ = _compute_annualized_costs(input_data)
 
-    df_plot = filter(row -> row.total_annual_cost > 1.0, df_total)
+    df_plot = filter(row -> !ismissing(row.total_annual_cost) && row.total_annual_cost > 1.0, df_total)
 
     if nrow(df_plot) == 0
         @warn "No non-zero annualized costs found."
@@ -147,27 +158,15 @@ function plot_lcox_analysis(input_data;
                             output_dir=nothing,
                             file_name="lcox_analysis")
 
-    # Profile integration helper
-    function get_profile_sum(asset_name, df_assets_profiles, df_profiles_wide)
-        row = filter(r -> r.asset == asset_name, df_assets_profiles)
-        if nrow(row) == 0
-            return nrow(df_profiles_wide) * 1.0
-        end
-        prof_name = row[1, :profile_name]
-        return prof_name in names(df_profiles_wide) ? sum(df_profiles_wide[!, prof_name]) : 0.0
-    end
 
     # =================================================================================
     # STEP 1: Annualized costs (shared helper)
     # =================================================================================
-    df_total, df_p = _compute_annualized_costs(input_data)
+    df_total, df_p, df_rp_weights = _compute_annualized_costs(input_data)
 
     # =================================================================================
     # STEP 2: LCOE per generation asset
     # =================================================================================
-    df_assets_profiles = get_df(input_data, "assets_profiles")
-    df_profiles_wide   = get_df(input_data, "profiles_wide")
-
     df_lcoe = filter(row -> any(occursin.(gen_assets, row.asset)), df_total)
 
     if nrow(df_lcoe) > 0
@@ -176,12 +175,22 @@ function plot_lcox_analysis(input_data;
 
         df_lcoe = leftjoin(df_lcoe, df_caps, on=:asset, makeunique=true)
 
-        df_lcoe[!, :total_generation] = [
-            row.installed_capacity_mw * get_profile_sum(row.asset, df_assets_profiles, df_profiles_wide)
-            for row in eachrow(df_lcoe)
-        ]
+        # Weighted annual generation from var_flow (consistent with annualised OPEX)
+        df_flows_raw = get_df(input_data, "var_flow")
+        rp_col_gen   = "rep_period" in names(df_flows_raw) ? [:rep_period] : Symbol[]
+        df_gen = select(df_flows_raw, :from_asset, :year, rp_col_gen..., :solution)
+        if !isempty(rp_col_gen)
+            df_gen = leftjoin(df_gen, df_rp_weights, on = [:year, :rep_period])
+        else
+            df_gen[!, :rp_weight] = ones(nrow(df_gen))
+        end
+        df_gen[!, :weighted_flow] = df_gen.solution .* coalesce.(df_gen.rp_weight, 1.0)
+        df_gen_by_asset = combine(groupby(df_gen, :from_asset),
+                                  :weighted_flow => sum => :total_generation)
+        rename!(df_gen_by_asset, :from_asset => :asset)
 
-        df_lcoe[!, :lcoe] = df_lcoe.total_annual_cost ./ max.(1.0, df_lcoe.total_generation)
+        df_lcoe = leftjoin(df_lcoe, df_gen_by_asset, on=:asset, makeunique=true)
+        df_lcoe[!, :lcoe] = df_lcoe.total_annual_cost ./ max.(1.0, coalesce.(df_lcoe.total_generation, 0.0))
     end
 
     # =================================================================================
@@ -194,9 +203,17 @@ function plot_lcox_analysis(input_data;
         error("Demand asset '$demand_asset_name' not found in asset_milestone table.")
     end
 
-    peak_demand       = demand_row[1, :peak_demand]
-    profile_integral  = get_profile_sum(demand_asset_name, df_assets_profiles, df_profiles_wide)
-    total_demand_units = peak_demand * profile_integral
+    # Total annual production = sum of weighted flows INTO the demand asset
+    df_flows_raw_lcox = get_df(input_data, "var_flow")
+    rp_col_d = "rep_period" in names(df_flows_raw_lcox) ? [:rep_period] : Symbol[]
+    df_dem = filter(r -> r.to_asset == demand_asset_name, df_flows_raw_lcox)
+    df_dem = select(df_dem, :year, rp_col_d..., :solution)
+    if !isempty(rp_col_d)
+        df_dem = leftjoin(df_dem, df_rp_weights, on = [:year, :rep_period])
+    else
+        df_dem[!, :rp_weight] = ones(nrow(df_dem))
+    end
+    total_demand_units = sum(df_dem.solution .* coalesce.(df_dem.rp_weight, 1.0))
 
     if total_demand_units <= 1e-3
         total_demand_units = 1.0
@@ -209,7 +226,7 @@ function plot_lcox_analysis(input_data;
     df_lcox[!, :unit_cost_total]  = df_lcox.total_annual_cost ./ total_demand_units
 
     sort!(df_lcox, :unit_cost_total, rev=false)
-    df_lcox = filter(row -> row.unit_cost_total > 1e-4, df_lcox)
+    df_lcox = filter(row -> !ismissing(row.unit_cost_total) && row.unit_cost_total > 1e-4, df_lcox)
 
     # =================================================================================
     # STEP 4: Visualization

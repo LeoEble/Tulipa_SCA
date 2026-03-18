@@ -1,0 +1,13 @@
+from_asset,to_asset,commission_year,conversion_coefficient,capacity_coefficient,producer_efficiency
+wind,battery,2030,0.95,1.0,1.0
+wind,E_hub,2030,0.95,1.0,1.0
+solar,battery,2030,0.95,1.0,1.0
+solar,E_hub,2030,0.95,1.0,1.0
+market,battery,2030,1.0,1.0,1.0
+market,E_hub,2030,1.0,1.0,1.0
+battery,E_hub,2030,1.0,1.0,1.0
+E_hub,electrolyzer,2030,1.0,1.0,1.0
+electrolyzer,H2_storage,2030,1.0,1.0,1.0
+H2_storage,H2_hub,2030,1.0,1.0,1.0
+electrolyzer,H2_hub,2030,1.0,1.0,1.0
+H2_hub,H2_demand,2030,1.0,1.0,1.0
