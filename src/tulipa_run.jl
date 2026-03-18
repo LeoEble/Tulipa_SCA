@@ -25,7 +25,7 @@ function tulipa_run(db_path::AbstractString,
                     optimizer_parameters = Dict(
                         "OutputFlag"   => 1,
                         "MIPGap"       => 0.03,
-                        "Threads"      => 0,
+                        "Threads"      => 8,
                         "TimeLimit"    => 3600.0,
                         "Seed"         => 314159
                     ),

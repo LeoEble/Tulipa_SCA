@@ -41,8 +41,22 @@ function main()
     input_dir  = "data/raw/methanol_v01/"
     output_dir = "outputs"
 
-    representative_periods = 30
-    representative_period_duration = 50
+    representative_periods = 1
+    representative_period_duration = 8760
+
+    gurobi_parameters = Dict(
+    "MIPGap"         => 0.01,    # Stop at 1% optimality gap
+    "MIPFocus"       => 1,       # Focus on finding feasible solutions (vital for UC)
+    "Heuristics"     => 0.25,    # Spend 25% of time on "guessing" valid schedules
+    "RINS"           => 20,      # Aggressive heuristic search every 20 nodes
+    "Presolve"       => 2,       # Aggressive model compression
+    "Symmetry"       => 2,       # Aggressive temporal symmetry breaking
+    "Cuts"           => 2,       # Aggressive cut generation for tighter bounds
+    "PumpPasses"     => 5,       # Extra effort to find initial feasible schedules
+    "ZeroHalfCuts"   => 2,       # Specialized math for binary/integer variables
+    "Threads"        => 8,       # Resource limit
+    "LogToConsole"   => 1        # Keep an eye on the progress
+    )
 
     if !isdir(output_dir)
         mkpath(output_dir)
@@ -51,13 +65,14 @@ function main()
     @info "Starting Tulipa SCA run" db_path input_dir output_dir
 
     # # --- 1) Run optimization only (no plotting here) -------------------------
-    # energy_problem = TSCA.tulipa_run(db_path,
-    #                             input_dir,
-    #                             output_dir;
-    #                             num_rps    = representative_periods,
-    #                             period_duration = representative_period_duration)
+    energy_problem = TSCA.tulipa_run(db_path,
+                                input_dir,
+                                output_dir;
+                                num_rps    = representative_periods,
+                                period_duration = representative_period_duration,
+                                optimizer_parameters = gurobi_parameters)
 
-    # @info "Optimization finished" energy_problem
+    @info "Optimization finished" energy_problem
 
     # --- 2) Post-processing & plots ------------------------------------------
     connection = DBInterface.connect(DuckDB.DB, db_path)
