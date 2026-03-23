@@ -41,7 +41,7 @@ The case study models a **green methanol production system** projected to the ye
 
 ### Asset Flow Diagram
 
-<img width="6345" height="1305" alt="Untitled diagram-2026-01-27-193016" src="https://github.com/user-attachments/assets/4c043964-d7e8-425e-aef5-25bd816129a6" />
+<img width="6766" height="1152" alt="mermaid-diagram-2026-03-23T17-09-06" src="https://github.com/user-attachments/assets/03b76771-734a-4345-bfc6-cc7a4256923f" />
 
 #### How to view the topology diagram
 
