@@ -100,7 +100,7 @@ menu_config = Dict(
     # cost_range in EUR/(t/h): ±20% around reference (larger plant → lower per-unit cost)
     # cap_range in t/h: covers the original range (2 t/h × 20 units = 40 t/h max)
     "electrolyzer" => create_range_options(
-        n_steps    = 50,
+        n_steps    = 10,
         cap_range  = (20, 100.0),                                    # t/h: Min -> Max
         cost_range = (137_500_000 * 1.1, 137_500_000 * 0.9),         # EUR/(t/h): High -> Low
         eff_range  = (0.021, 0.021)                                   # Efficiency flat

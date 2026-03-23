@@ -45,17 +45,23 @@ function main()
     representative_period_duration = 8760
 
     gurobi_parameters = Dict(
-    "MIPGap"         => 0.01,    # Stop at 1% optimality gap
-    "MIPFocus"       => 1,       # Focus on finding feasible solutions (vital for UC)
-    "Heuristics"     => 0.25,    # Spend 25% of time on "guessing" valid schedules
-    "RINS"           => 20,      # Aggressive heuristic search every 20 nodes
-    "Presolve"       => 2,       # Aggressive model compression
-    "Symmetry"       => 2,       # Aggressive temporal symmetry breaking
-    "Cuts"           => 2,       # Aggressive cut generation for tighter bounds
-    "PumpPasses"     => 5,       # Extra effort to find initial feasible schedules
-    "ZeroHalfCuts"   => 2,       # Specialized math for binary/integer variables
-    "Threads"        => 8,       # Resource limit
-    "LogToConsole"   => 1        # Keep an eye on the progress
+        # --- The Hardware Optimizations (i7-13850HX) ---
+        "Threads"        => 16,      # Maximize P-Cores, ignore E-Cores
+        "Method"         => 2,       # Force multi-threaded Barrier for the root
+
+        # --- The Mathematical Strategy ---
+        "MIPGap"         => 0.01,    # Stop at 1%
+        "MIPFocus"       => 1,       # Keep focusing on feasible solutions first
+        "Presolve"       => 2,       # Keep aggressive model compression
+        "Symmetry"       => 2,       # Keep temporal symmetry breaking
+        "Cuts"           => 2,       # Keep aggressive cuts for tight bounds
+        
+        # --- The "Dialed-Back" Heuristics ---
+        "Heuristics"     => 0.10,    # Reduced from 25% since the data is fixed
+        "PumpPasses"     => 1,       # Reduced from 5 (default is usually enough now)
+        "ZeroHalfCuts"   => 2,       # Keep this for Unit Commitment binaries
+        
+        "LogToConsole"   => 1
     )
 
     if !isdir(output_dir)
@@ -65,14 +71,14 @@ function main()
     @info "Starting Tulipa SCA run" db_path input_dir output_dir
 
     # # --- 1) Run optimization only (no plotting here) -------------------------
-    energy_problem = TSCA.tulipa_run(db_path,
-                                input_dir,
-                                output_dir;
-                                num_rps    = representative_periods,
-                                period_duration = representative_period_duration,
-                                optimizer_parameters = gurobi_parameters)
+    # energy_problem = TSCA.tulipa_run(db_path,
+    #                             input_dir,
+    #                             output_dir;
+    #                             num_rps    = representative_periods,
+    #                             period_duration = representative_period_duration,
+    #                             optimizer_parameters = gurobi_parameters)
 
-    @info "Optimization finished" energy_problem
+    # @info "Optimization finished" energy_problem
 
     # --- 2) Post-processing & plots ------------------------------------------
     connection = DBInterface.connect(DuckDB.DB, db_path)
