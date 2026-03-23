@@ -52,6 +52,9 @@ function tulipa_run(db_path::AbstractString,
 
         # 4. Representative periods / clustering
         if num_rps <= 1
+            @info "Update `is_seasonal` to false in all assets in the asset table"
+            DBInterface.execute(connection, "UPDATE asset SET is_seasonal = false")
+
             @info "Using dummy representative period (TC.dummy_cluster!)"
             TC.dummy_cluster!(connection)
         else
