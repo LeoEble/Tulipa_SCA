@@ -27,6 +27,8 @@ function fetch_plotting_data(connection)
         "assets_profiles",
         "profiles_wide",
         "flow_milestone",
+        "flows_profiles",
+        "profiles_rep_periods"
     ]
 
     cache = Dict{String, DataFrame}()

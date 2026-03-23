@@ -33,18 +33,38 @@ High-level workflow:
 """
 function main()
     # --- Paths / scenario configuration --------------------------------------
-    # db_path    = "data/db/sca_electrolysis.db"
-    # input_dir  = "data/raw/electrolysis_v01/"
-    # output_dir = "outputs"
+    # Change `case` to switch between scenarios:
+    #   Number: 1 = no unit commitment, 2 = with unit commitment
+    #   Letter: a = market only, b = RES only (wind+solar), c = market + RES
+    case       = "1a"
 
-    db_path    = "data/db/sca_methanol.db"
-    input_dir  = "data/raw/methanol_v01/"
-    output_dir = "outputs"
+    db_path    = "data/db/sca_methanol_$(case).db"
+    input_dir  = "data/raw/methanol_$(case)/"
+    output_dir = "outputs/methanol_$(case)"
 
     representative_periods = 1
     representative_period_duration = 8760
 
-    gurobi_parameters = Dict(
+    # Electricity generators present per case variant
+    case_letter = last(case)
+    gen_assets = if case_letter == 'a'
+        ["market"]
+    elseif case_letter == 'b'
+        ["wind", "solar"]
+    else  # 'c'
+        ["wind", "solar", "market"]
+    end
+
+    gurobi_lp_duals = Dict(
+        "Method"       => 4,     # Concurrent: Runs Barrier and Dual Simplex simultaneously
+                                # Whichever one finishes first wins.
+        # Crossover is left default (ON) so you can get Shadow Prices
+        "Threads"      => 16,    
+        "Presolve"     => 2,     
+        "LogToConsole" => 1
+    )
+
+    gurobi_parameters_MIP = Dict(
         # --- The Hardware Optimizations (i7-13850HX) ---
         "Threads"        => 16,      # Maximize P-Cores, ignore E-Cores
         "Method"         => 2,       # Force multi-threaded Barrier for the root
@@ -64,13 +84,22 @@ function main()
         "LogToConsole"   => 1
     )
 
+    case_number = parse(Int, first(case))
+    gurobi_parameters = if case_number == 1
+        gurobi_lp_duals
+    elseif case_number == 2
+        gurobi_parameters_MIP
+    else
+        print("case_number $case_number is not 1 or 2")
+    end
+
     if !isdir(output_dir)
         mkpath(output_dir)
     end
 
     @info "Starting Tulipa SCA run" db_path input_dir output_dir
 
-    # # --- 1) Run optimization only (no plotting here) -------------------------
+    # --- 1) Run optimization only (no plotting here) -------------------------
     # energy_problem = TSCA.tulipa_run(db_path,
     #                             input_dir,
     #                             output_dir;
@@ -108,7 +137,7 @@ function main()
             data_cache;
             demand_asset_name = "CH3OH_demand",
             demand_unit       = "tonnes CH3OH",
-            gen_assets        = ["wind", "solar"],
+            gen_assets        = gen_assets,
             output_dir        = output_dir,
             file_name         = "lcox_analysis",
         )

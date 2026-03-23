@@ -1,7 +1,7 @@
 # ==========================================
 # Shared cost calculation (used by both plot functions below)
 # Returns a DataFrame with columns:
-#   asset, inv_power_ann, inv_energy_ann, opex_ann, total_annual_cost
+#   asset, inv_power_ann, inv_energy_ann, fixed_cost_ann, opex_ann, commodity_cost_ann, total_annual_cost
 # ==========================================
 function _compute_annualized_costs(input_data)
     df_inv_power  = get_df(input_data, "var_assets_investment")
@@ -17,23 +17,29 @@ function _compute_annualized_costs(input_data)
     asset_financials[!, :crf] = [calc_crf(r, l) for (r, l) in zip(asset_financials.discount_rate, asset_financials.economic_lifetime)]
     df_crf = select(asset_financials, :asset, :crf)
 
-    # Power CAPEX
+    # Power CAPEX + fixed O&M
     df_p = select(df_inv_power, :asset, :solution, :capacity, :milestone_year)
     df_p = leftjoin(df_p, df_crf, on = :asset, makeunique=true)
     df_p = leftjoin(df_p,
-        select(df_commission, :asset, :commission_year, :investment_cost),
+        select(df_commission, :asset, :commission_year, :investment_cost, :fixed_cost),
         on = [:asset, :milestone_year => :commission_year], makeunique=true)
-    df_p[!, :inv_power_ann] = df_p.solution .* df_p.capacity .* coalesce.(df_p.investment_cost, 0.0) .* coalesce.(df_p.crf, 1.0)
-    capex_power = combine(groupby(df_p, :asset), :inv_power_ann => sum => :inv_power_ann)
+    df_p[!, :inv_power_ann]   = df_p.solution .* df_p.capacity .* coalesce.(df_p.investment_cost, 0.0) .* coalesce.(df_p.crf, 1.0)
+    df_p[!, :fixed_power_ann] = df_p.solution .* df_p.capacity .* coalesce.(df_p.fixed_cost, 0.0)
+    capex_power = combine(groupby(df_p, :asset),
+        :inv_power_ann   => sum => :inv_power_ann,
+        :fixed_power_ann => sum => :fixed_power_ann)
 
-    # Energy CAPEX (storage)
+    # Energy CAPEX + fixed O&M (storage)
     df_e = select(df_inv_energy, :asset, :solution, :capacity_storage_energy, :milestone_year)
     df_e = leftjoin(df_e, df_crf, on = :asset, makeunique=true)
     df_e = leftjoin(df_e,
-        select(df_commission, :asset, :commission_year, :investment_cost_storage_energy),
+        select(df_commission, :asset, :commission_year, :investment_cost_storage_energy, :fixed_cost_storage_energy),
         on = [:asset, :milestone_year => :commission_year], makeunique=true)
-    df_e[!, :inv_energy_ann] = df_e.solution .* df_e.capacity_storage_energy .* coalesce.(df_e.investment_cost_storage_energy, 0.0) .* coalesce.(df_e.crf, 1.0)
-    capex_energy = combine(groupby(df_e, :asset), :inv_energy_ann => sum => :inv_energy_ann)
+    df_e[!, :inv_energy_ann]   = df_e.solution .* df_e.capacity_storage_energy .* coalesce.(df_e.investment_cost_storage_energy, 0.0) .* coalesce.(df_e.crf, 1.0)
+    df_e[!, :fixed_energy_ann] = df_e.solution .* df_e.capacity_storage_energy .* coalesce.(df_e.fixed_cost_storage_energy, 0.0)
+    capex_energy = combine(groupby(df_e, :asset),
+        :inv_energy_ann   => sum => :inv_energy_ann,
+        :fixed_energy_ann => sum => :fixed_energy_ann)
 
     # Rep-period weights: sum of convex weights per (year, rep_period) → annualisation factor
     df_rep_map   = get_df(input_data, "rep_periods_mapping")
@@ -55,13 +61,63 @@ function _compute_annualized_costs(input_data)
     opex = combine(groupby(df_f, :from_asset), :opex_ann => sum => :opex_ann)
     rename!(opex, :from_asset => :asset)
 
-    # Merge
+    # Commodity price costs (time-varying, e.g. market electricity purchase)
+    # flows_profiles maps (from_asset, to_asset, year) → profile_name for profile_type="commodity_price"
+    # profiles_rep_periods holds the actual values per (profile_name, rep_period, timestep)
+    df_flows_profiles = get_df(input_data, "flows_profiles")
+    df_prp            = get_df(input_data, "profiles_rep_periods")
+    df_cprice         = filter(r -> r.profile_type == "commodity_price", df_flows_profiles)
+
+    # Detect timestep column name — var_flow may use :timestep or :time_block_start
+    ts_flows = "timestep"        in names(df_flows) ? :timestep :
+               "time_block_start" in names(df_flows) ? :time_block_start : nothing
+    # profiles_rep_periods typically uses :time_block_start
+    ts_prp   = "time_block_start" in names(df_prp) ? :time_block_start :
+               "timestep"         in names(df_prp) ? :timestep : nothing
+
+    commodity_cost = if !isempty(df_cprice) && !isempty(df_prp) && ts_flows !== nothing && ts_prp !== nothing
+        rp_col_c = "rep_period" in names(df_flows) ? [:rep_period] : Symbol[]
+        df_fc = select(df_flows, :from_asset, :to_asset, :year, rp_col_c..., ts_flows, :solution)
+        df_fc = innerjoin(df_fc,
+                    select(df_cprice, :from_asset, :to_asset, :year, :profile_name),
+                    on = [:from_asset, :to_asset, :year])
+        if !isempty(rp_col_c)
+            df_fc = leftjoin(df_fc, df_rp_weights, on = [:year, :rep_period])
+        else
+            df_fc[!, :rp_weight] = ones(nrow(df_fc))
+        end
+        # Rename flow timestep column to :_ts for the join, in case names differ
+        if ts_flows != ts_prp
+            rename!(df_fc, ts_flows => :_ts)
+            prp_sel = select(df_prp, :profile_name, :rep_period, ts_prp => :_ts, :value => :price)
+            df_fc = leftjoin(df_fc, prp_sel, on = [:profile_name, :rep_period, :_ts])
+        else
+            prp_sel = select(df_prp, :profile_name, :rep_period, ts_prp, :value => :price)
+            df_fc = leftjoin(df_fc, prp_sel, on = [:profile_name, :rep_period, ts_flows])
+        end
+        df_fc[!, :commodity_cost] = df_fc.solution .* coalesce.(df_fc.rp_weight, 1.0) .* coalesce.(df_fc.price, 0.0)
+        c = combine(groupby(df_fc, :from_asset), :commodity_cost => sum => :commodity_cost_ann)
+        rename!(c, :from_asset => :asset)
+    else
+        if !isempty(df_cprice) && (ts_flows === nothing || ts_prp === nothing)
+            @warn "Cannot compute commodity costs: no matching timestep column in var_flow or profiles_rep_periods."
+        end
+        DataFrame(asset=String[], commodity_cost_ann=Float64[])
+    end
+
+    # Merge — outerjoin so non-investable assets with commodity costs (e.g. market) also appear
     df_total = capex_power
     df_total = leftjoin(df_total, capex_energy, on = :asset, makeunique=true)
     df_total = leftjoin(df_total, opex,         on = :asset, makeunique=true)
-    df_total.inv_energy_ann .= coalesce.(df_total.inv_energy_ann, 0.0)
-    df_total.opex_ann       .= coalesce.(df_total.opex_ann, 0.0)
-    df_total[!, :total_annual_cost] = coalesce.(df_total.inv_power_ann, 0.0) .+ df_total.inv_energy_ann .+ df_total.opex_ann
+    df_total = outerjoin(df_total, commodity_cost, on = :asset, makeunique=true)
+    df_total.inv_power_ann      .= coalesce.(df_total.inv_power_ann,      0.0)
+    df_total.inv_energy_ann     .= coalesce.(df_total.inv_energy_ann,     0.0)
+    df_total.fixed_power_ann    .= coalesce.(df_total.fixed_power_ann,    0.0)
+    df_total.fixed_energy_ann   .= coalesce.(df_total.fixed_energy_ann,   0.0)
+    df_total[!, :fixed_cost_ann] = df_total.fixed_power_ann .+ df_total.fixed_energy_ann
+    df_total.opex_ann           .= coalesce.(df_total.opex_ann,           0.0)
+    df_total.commodity_cost_ann .= coalesce.(df_total.commodity_cost_ann, 0.0)
+    df_total[!, :total_annual_cost] = df_total.inv_power_ann .+ df_total.inv_energy_ann .+ df_total.fixed_cost_ann .+ df_total.opex_ann .+ df_total.commodity_cost_ann
 
     return df_total, df_p, df_rp_weights   # also return df_p for capacity lookups in LCOx
 end
@@ -94,9 +150,15 @@ function plot_investment_costs(input_data; output_dir=nothing, file_name="annual
     barplot!(ax, 1:nrow(df_plot), df_plot.inv_energy_ann,
         direction=:x, color=:orange, label="Inv. Energy",
         offset = df_plot.inv_power_ann)
-    barplot!(ax, 1:nrow(df_plot), df_plot.opex_ann,
-        direction=:x, color=:forestgreen, label="OPEX",
+    barplot!(ax, 1:nrow(df_plot), df_plot.fixed_cost_ann,
+        direction=:x, color=:mediumpurple, label="Fixed O&M",
         offset = df_plot.inv_power_ann .+ df_plot.inv_energy_ann)
+    barplot!(ax, 1:nrow(df_plot), df_plot.opex_ann,
+        direction=:x, color=:forestgreen, label="Var. OPEX",
+        offset = df_plot.inv_power_ann .+ df_plot.inv_energy_ann .+ df_plot.fixed_cost_ann)
+    barplot!(ax, 1:nrow(df_plot), df_plot.commodity_cost_ann,
+        direction=:x, color=:firebrick, label="Commodity",
+        offset = df_plot.inv_power_ann .+ df_plot.inv_energy_ann .+ df_plot.fixed_cost_ann .+ df_plot.opex_ann)
 
     axislegend(ax, position=:rb)
     ylims!(ax, 0.5, nrow(df_plot) + 0.5)
@@ -220,10 +282,12 @@ function plot_lcox_analysis(input_data;
     end
 
     df_lcox = copy(df_total)
-    df_lcox[!, :unit_cost_power]  = df_lcox.inv_power_ann  ./ total_demand_units
-    df_lcox[!, :unit_cost_energy] = df_lcox.inv_energy_ann ./ total_demand_units
-    df_lcox[!, :unit_cost_opex]   = df_lcox.opex_ann       ./ total_demand_units
-    df_lcox[!, :unit_cost_total]  = df_lcox.total_annual_cost ./ total_demand_units
+    df_lcox[!, :unit_cost_power]     = df_lcox.inv_power_ann      ./ total_demand_units
+    df_lcox[!, :unit_cost_energy]    = df_lcox.inv_energy_ann     ./ total_demand_units
+    df_lcox[!, :unit_cost_fixed]     = df_lcox.fixed_cost_ann     ./ total_demand_units
+    df_lcox[!, :unit_cost_opex]      = df_lcox.opex_ann           ./ total_demand_units
+    df_lcox[!, :unit_cost_commodity] = df_lcox.commodity_cost_ann ./ total_demand_units
+    df_lcox[!, :unit_cost_total]     = df_lcox.total_annual_cost  ./ total_demand_units
 
     sort!(df_lcox, :unit_cost_total, rev=false)
     df_lcox = filter(row -> !ismissing(row.unit_cost_total) && row.unit_cost_total > 1e-4, df_lcox)
@@ -234,17 +298,37 @@ function plot_lcox_analysis(input_data;
     fig = Figure(size=(1200, 700))
 
     if nrow(df_lcoe) > 0
+        # Per-component LCOE (same denominator: total_generation per asset)
+        gen = max.(1.0, coalesce.(df_lcoe.total_generation, 0.0))
+        df_lcoe[!, :lcoe_capex]     = (df_lcoe.inv_power_ann .+ df_lcoe.inv_energy_ann) ./ gen
+        df_lcoe[!, :lcoe_fixed]     = df_lcoe.fixed_cost_ann     ./ gen
+        df_lcoe[!, :lcoe_opex]      = df_lcoe.opex_ann           ./ gen
+        df_lcoe[!, :lcoe_commodity] = df_lcoe.commodity_cost_ann ./ gen
+
         ax_lcoe = Axis(fig[1,1],
             title  = "Generation LCOE",
             xlabel = "Cost (€/MWh)",
             ylabel = "Asset",
             yticks = (1:nrow(df_lcoe), df_lcoe.asset))
-        barplot!(ax_lcoe, 1:nrow(df_lcoe), df_lcoe.lcoe, direction=:x, color=:teal)
+
+        barplot!(ax_lcoe, 1:nrow(df_lcoe), df_lcoe.lcoe_capex,
+            direction=:x, color=:cornflowerblue, label="CAPEX")
+        barplot!(ax_lcoe, 1:nrow(df_lcoe), df_lcoe.lcoe_fixed,
+            direction=:x, color=:mediumpurple, label="Fixed O&M",
+            offset = df_lcoe.lcoe_capex)
+        barplot!(ax_lcoe, 1:nrow(df_lcoe), df_lcoe.lcoe_opex,
+            direction=:x, color=:forestgreen, label="Var. OPEX",
+            offset = df_lcoe.lcoe_capex .+ df_lcoe.lcoe_fixed)
+        barplot!(ax_lcoe, 1:nrow(df_lcoe), df_lcoe.lcoe_commodity,
+            direction=:x, color=:firebrick, label="Commodity",
+            offset = df_lcoe.lcoe_capex .+ df_lcoe.lcoe_fixed .+ df_lcoe.lcoe_opex)
+
         text!(ax_lcoe, df_lcoe.lcoe, 1:nrow(df_lcoe),
             text   = [string(round(v, digits=1)) for v in df_lcoe.lcoe],
             align  = (:left, :center),
             offset = (5, 0))
         xlims!(ax_lcoe, 0, maximum(df_lcoe.lcoe) * 1.3)
+        axislegend(ax_lcoe, position=:rb)
     end
 
     ax_lcox = Axis(fig[1,2],
@@ -258,9 +342,15 @@ function plot_lcox_analysis(input_data;
     barplot!(ax_lcox, 1:nrow(df_lcox), df_lcox.unit_cost_energy,
         direction=:x, color=:orange, label="Inv. Energy",
         offset = df_lcox.unit_cost_power)
-    barplot!(ax_lcox, 1:nrow(df_lcox), df_lcox.unit_cost_opex,
-        direction=:x, color=:forestgreen, label="OPEX",
+    barplot!(ax_lcox, 1:nrow(df_lcox), df_lcox.unit_cost_fixed,
+        direction=:x, color=:mediumpurple, label="Fixed O&M",
         offset = df_lcox.unit_cost_power .+ df_lcox.unit_cost_energy)
+    barplot!(ax_lcox, 1:nrow(df_lcox), df_lcox.unit_cost_opex,
+        direction=:x, color=:forestgreen, label="Var. OPEX",
+        offset = df_lcox.unit_cost_power .+ df_lcox.unit_cost_energy .+ df_lcox.unit_cost_fixed)
+    barplot!(ax_lcox, 1:nrow(df_lcox), df_lcox.unit_cost_commodity,
+        direction=:x, color=:firebrick, label="Commodity",
+        offset = df_lcox.unit_cost_power .+ df_lcox.unit_cost_energy .+ df_lcox.unit_cost_fixed .+ df_lcox.unit_cost_opex)
 
     axislegend(ax_lcox, position=:rb)
     Label(fig[0, :], "Total LCOx: $(round(sum(df_lcox.unit_cost_total), digits=2)) €/$demand_unit",

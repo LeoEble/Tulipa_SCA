@@ -1,0 +1,14 @@
+asset,commission_year,investment_cost,investment_cost_storage_energy,fixed_cost,fixed_cost_storage_energy,investment_limit,conversion_efficiency,storage_charging_efficiency,storage_discharging_efficiency
+wind,2030,3787000,,113610,,,0,0,0
+solar,2030,762000,,11430,,,0,0,0
+battery,2030,100,265000,,5300,,0,0.9,0.9
+electrolyzer,2030,145092857,,4352785,,20,0.021,0,0
+H2_storage,2030,5,12200,,12.2,100000,0,1,1
+H2_hub,2030,0.0,,,,,0,0,0
+CH3OH_synthesis,2030,3942000,,1971000,,80,0.473,0,0
+DAC,2030,3150000,,126000,,120,2,0,0
+CO2_storage,2030,5,150,,0.15,100000,0,1,1
+CO2_hub,2030,0.0,,,,,0,0,0
+E_hub,2030,0.0,,,,,0,0,0
+CH3OH_demand,2030,0.0,,,,,0,0,0
+CH3OH_storage,2030,1,100,,0.1,,0,1,1

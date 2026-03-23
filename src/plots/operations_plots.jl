@@ -97,10 +97,13 @@ function plot_operations_mass_balance(input_data;
         "e_battery"           => [("battery", "E_hub")],
         "e_grid_buy"          => [("market", "battery"), ("market", "E_hub")],
         "e_electrolyzer"      => [("E_hub", "electrolyzer")],
+        "e_DAC"               => [("E_hub", "DAC")],
+        "e_methanol"          => [("E_hub", "CH3OH_synthesis")],
         "h_electrolyzer_out"  => [("electrolyzer", "H2_storage"), ("electrolyzer", "H2_hub")],
         "h_demand_feed"       => [("H2_hub", "CH3OH_synthesis")],
+        "co2_dac_out"         => [("DAC", "CO2_hub"), ("DAC", "CO2_storage")],
         "m_methanol_out"      => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_synthesis", "CH3OH_storage")],
-        "m_co2_in"            => [("CO2", "CH3OH_synthesis")],
+        "m_co2_in"            => [("CO2_hub", "CH3OH_synthesis")],
         "m_demand"            => [("CH3OH_synthesis", "CH3OH_demand"), ("CH3OH_storage", "CH3OH_demand")]
     ),
     storage_map = Dict(
@@ -184,26 +187,26 @@ function plot_operations_mass_balance(input_data;
     x_summer = isempty(summerdata) ? Float64[] : datetime2unix.(summerdata.real_datetime)
     x_winter = isempty(winterdata) ? Float64[] : datetime2unix.(winterdata.real_datetime)
 
-    fig = Figure(size=(1400, 1000))
+    fig = Figure(size=(1400, 1100))
 
     # --- AXIS CREATION ---
-    ax_a_main = Axis(fig[1,1], ylabel="Power [MW]",    title="Summer Operation")
-    ax_a_dual = Axis(fig[1,1], yaxisposition=:right,   ylabel="Battery SOC [MWh]")
+    ax_a_main = Axis(fig[1,1], ylabel="Power [MW]",        title="Summer Operation")
+    ax_a_dual = Axis(fig[1,1], yaxisposition=:right,        ylabel="Battery SOC [MWh]")
 
-    ax_b_main = Axis(fig[1,2],                         title="Winter Operation")
-    ax_b_dual = Axis(fig[1,2], yaxisposition=:right,   ylabel="Battery SOC [MWh]")
+    ax_b_main = Axis(fig[1,2],                              title="Winter Operation")
+    ax_b_dual = Axis(fig[1,2], yaxisposition=:right,        ylabel="Battery SOC [MWh]")
 
-    ax_c_main = Axis(fig[2,1], ylabel="H2 Flow [kg/h]")
-    ax_c_dual = Axis(fig[2,1], yaxisposition=:right)
+    ax_c_main = Axis(fig[2,1], ylabel="Flow [t/h]")
+    ax_c_dual = Axis(fig[2,1], yaxisposition=:right,        ylabel="H2 / CO2 SOC [t]")
 
     ax_d_main = Axis(fig[2,2])
-    ax_d_dual = Axis(fig[2,2], yaxisposition=:right,   ylabel="H2 SOC [kg]")
+    ax_d_dual = Axis(fig[2,2], yaxisposition=:right,        ylabel="H2 / CO2 SOC [t]")
 
-    ax_e_main = Axis(fig[3,1], ylabel="Mass Flow [kg/h]")
-    ax_e_dual = Axis(fig[3,1], yaxisposition=:right)
+    ax_e_main = Axis(fig[3,1], ylabel="Flow [t/h]")
+    ax_e_dual = Axis(fig[3,1], yaxisposition=:right,        ylabel="MeOH SOC [t]")
 
     ax_f_main = Axis(fig[3,2])
-    ax_f_dual = Axis(fig[3,2], yaxisposition=:right,   ylabel="MeOH SOC [kg]")
+    ax_f_dual = Axis(fig[3,2], yaxisposition=:right,        ylabel="MeOH SOC [t]")
 
     # --- AXIS LINKING ---
     linkxaxes!(ax_a_main, ax_c_main, ax_e_main)
@@ -226,10 +229,10 @@ function plot_operations_mass_balance(input_data;
 
     colortwin = :black
 
-    # --- ROW 1: Power balance + battery SOC ---
-    cols1   = ["e_res", "e_battery", "e_electrolyzer", "e_grid_buy"]
-    labels1 = ["RES", "Battery Output", "Electrolyzer In", "Grid Buy"]
-    colors1 = [:gold, :orange, :dodgerblue3, :firebrick]
+    # --- ROW 1: Electricity balance + battery SOC ---
+    cols1   = ["e_res", "e_battery", "e_grid_buy", "e_electrolyzer", "e_DAC", "e_methanol"]
+    labels1 = ["RES", "Battery Output", "Grid Buy", "Electrolyzer In", "DAC In", "MeOH Synthesis In"]
+    colors1 = [:gold, :orange, :firebrick, :dodgerblue3, :mediumpurple, :mediumseagreen]
 
     if !isempty(summerdata)
         series!(ax_a_main, x_summer, Matrix{Float64}(summerdata[:, cols1])', labels=labels1, color=colors1)
@@ -243,27 +246,31 @@ function plot_operations_mass_balance(input_data;
     Legend(leg1_grid[1,1], ax_a_main)
     Legend(leg1_grid[2,1], ax_a_dual)
 
-    # --- ROW 2: H2 flows + H2 SOC ---
-    cols2   = ["h_electrolyzer_out", "h_demand_feed"]
-    labels2 = ["Electrolyzer Out", "H2 Feed"]
-    colors2 = [:dodgerblue3, :mediumseagreen]
+    # --- ROW 2: H2 + CO2 flows + storage SOC ---
+    cols2   = ["h_electrolyzer_out", "h_demand_feed", "co2_dac_out"]
+    labels2 = ["Electrolyzer Out", "H2 Feed", "DAC CO2 Out"]
+    colors2 = [:dodgerblue3, :mediumseagreen, :sienna]
+
+    has_co2_soc = "co2_storage_soc" in names(combined_data)
 
     if !isempty(summerdata)
         series!(ax_c_main, x_summer, Matrix{Float64}(summerdata[:, cols2])', labels=labels2, color=colors2)
-        lines!(ax_c_dual,  x_summer, summerdata.h_storage_soc, label="H2 SOC", color=colortwin, linestyle=:dash)
+        lines!(ax_c_dual,  x_summer, summerdata.h_storage_soc,  label="H2 SOC",  color=colortwin,  linestyle=:dash)
+        has_co2_soc && lines!(ax_c_dual, x_summer, summerdata.co2_storage_soc, label="CO2 SOC", color=:sienna, linestyle=:dot)
     end
     if !isempty(winterdata)
         series!(ax_d_main, x_winter, Matrix{Float64}(winterdata[:, cols2])', labels=labels2, color=colors2)
-        lines!(ax_d_dual,  x_winter, winterdata.h_storage_soc, label="H2 SOC", color=colortwin, linestyle=:dash)
+        lines!(ax_d_dual,  x_winter, winterdata.h_storage_soc,  label="H2 SOC",  color=colortwin,  linestyle=:dash)
+        has_co2_soc && lines!(ax_d_dual, x_winter, winterdata.co2_storage_soc, label="CO2 SOC", color=:sienna, linestyle=:dot)
     end
     leg2_grid = GridLayout(fig[2,3])
     Legend(leg2_grid[1,1], ax_c_main)
     Legend(leg2_grid[2,1], ax_c_dual)
 
-    # --- ROW 3: MeOH mass balance + MeOH SOC ---
-    cols3   = ["m_methanol_out", "m_co2_in", "h_demand_feed"]
-    labels3 = ["MeOH Out", "CO2 In", "H2 In"]
-    colors3 = [:purple, :grey, :mediumseagreen]
+    # --- ROW 3: MeOH synthesis flows + MeOH SOC ---
+    cols3   = ["m_methanol_out", "m_co2_in", "h_demand_feed", "m_demand"]
+    labels3 = ["MeOH Out", "CO2 In", "H2 In", "MeOH Demand"]
+    colors3 = [:purple, :grey, :mediumseagreen, :darkorange]
 
     if !isempty(summerdata)
         series!(ax_e_main, x_summer, Matrix{Float64}(summerdata[:, cols3])', labels=labels3, color=colors3)
