@@ -13,7 +13,7 @@ The main script ([src/main.jl](src/main.jl)) performs the following:
 1. **Data Loading**: Reads input CSV files into a DuckDB in-memory database
 2. **Profile Transformation**: Converts wide-format time series to long format
 3. **Clustering**: Configures temporal representative periods (dummy or convex-hull clustering)
-4. **Optimization**: Runs the energy system model via HiGHS or Gurobi to minimize total system cost
+4. **Optimization**: Runs the energy system model via HiGHS or Gurobi to minimize total system cost, with optional relaxed-MIP solve and optional exclusive-investment constraints
 5. **Results Export**: Saves optimization outputs (flows, investments, storage levels, duals) to CSV
 6. **Visualization**: Generates topology diagrams, investment charts, operations mass-balance plots, and LCOX analysis
 
@@ -128,6 +128,7 @@ Tulipa_SCA/
 │   │   ├── asset_utils.jl       # Asset-level data helpers
 │   │   ├── flow_utils.jl        # Flow aggregation helpers
 │   │   ├── cost_utils.jl        # LCOX / CRF cost calculation utilities
+│   │   ├── exclusive_utils.jl   # Exclusive investment constraints for selected asset groups
 │   │   └── menu_utils.jl        # Interactive menu-driven scenario setup
 │   └── plots/
 │       ├── topology_plots.jl    # Mermaid asset-flow chart generation
@@ -199,6 +200,28 @@ To adapt the model for your own case study:
 2. Update `db_path`, `input_dir`, and `output_dir` in `src/main.jl`.
 3. Adjust `num_rps` and `period_duration` for your desired temporal resolution.
 4. Add or remove plot calls in `src/main.jl` as needed.
+
+### Extra optional optimization controls
+
+There are two extra optional keyword arguments in `tulipa_run` that can be used to control the optimization behavior:
+
+- `solve_relaxed_mip::Bool = false`: When set to `true`, integer investment and unit-commitment flags in the asset table are relaxed to continuous variables before solving.
+- `assets_base_name::String = ""`: When set (for example, `"electrolyzer"`), a custom exclusive constraint is added so the sum of matching investment variables is at most 1.
+
+Example usage:
+
+```julia
+energy_problem = tulipa_run(
+    db_path,
+    input_dir,
+    output_dir;
+    num_rps = representative_periods,
+    period_duration = representative_period_duration,
+    optimizer_parameters = gurobi_parameters,
+    solve_relaxed_mip = false,
+    assets_base_name = "electrolyzer",
+)
+```
 
 ---
 
