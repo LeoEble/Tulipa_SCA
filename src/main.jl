@@ -105,7 +105,10 @@ function main()
     #                             output_dir;
     #                             num_rps    = representative_periods,
     #                             period_duration = representative_period_duration,
-    #                             optimizer_parameters = gurobi_parameters)
+    #                             optimizer_parameters = gurobi_parameters,
+    #                             solve_relaxed_mip = false,
+    #                             assets_base_name = "electrolyzer",
+    #                             )
 
     # @info "Optimization finished" energy_problem
 

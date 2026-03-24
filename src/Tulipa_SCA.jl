@@ -16,6 +16,7 @@ module Tulipa_SCA
     include(joinpath(@__DIR__, "utils", "flow_utils.jl"))
     include(joinpath(@__DIR__, "utils", "asset_utils.jl"))
     include(joinpath(@__DIR__, "utils", "cost_utils.jl"))
+    include(joinpath(@__DIR__, "utils", "exclusive_utils.jl"))
 
     include(joinpath(@__DIR__, "tulipa_run.jl")) 
 

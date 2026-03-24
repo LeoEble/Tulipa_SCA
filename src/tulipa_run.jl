@@ -32,7 +32,10 @@ function tulipa_run(db_path::AbstractString,
                     model_parameters_file::AbstractString = joinpath(input_dir, "model-parameters.toml"),
                     model_file_name::AbstractString = "sca_model.lp",
                     num_rps::Int = 1,
-                    period_duration::Int = 24)
+                    period_duration::Int = 24,
+                    solve_relaxed_mip::Bool = false,
+                    assets_base_name::String = "",
+                    )
 
     # 1. Connect to DuckDB
     connection = DBInterface.connect(DuckDB.DB, db_path)
@@ -69,18 +72,24 @@ function tulipa_run(db_path::AbstractString,
                         weight_type = :convex)
         end
 
+        if solve_relaxed_mip
+            @info "Setting all integer variables to continuous for a relaxed MIP solve"
+            DBInterface.execute(connection, "UPDATE asset SET investment_integer = false, unit_commitment_integer = false")
+        end
+
         # 5. Populate default values
         @info "Populating defaults and running TulipaEnergyModel"
         TEM.populate_with_defaults!(connection)
 
         # 6. Run the energy model
-        energy_problem = TEM.run_scenario(
+        energy_problem = run_tulipa_scenario(
             connection;
             output_folder        = output_dir,
             optimizer            = optimizer,
             optimizer_parameters = optimizer_parameters,
             model_parameters_file = model_parameters_file,
             model_file_name       = model_file_name,
+            assets_base_name      = assets_base_name,
         )
 
 
@@ -91,4 +100,58 @@ function tulipa_run(db_path::AbstractString,
         DBInterface.close(connection)
         @info "Connection closed."
     end
+end
+
+function run_tulipa_scenario(
+    connection;
+    output_folder = "",
+    optimizer = HiGHS.Optimizer,
+    optimizer_parameters = TEM.default_parameters(optimizer),
+    model_parameters_file = "",
+    model_file_name = "",
+    enable_names = true,
+    direct_model = false,
+    assets_base_name = ""
+)
+    @info "Creating energy problem from database connection"
+    energy_problem = TEM.EnergyProblem(connection; model_parameters_file)
+
+    @info "Creating model and adding variables/constraints/objective"
+    TEM.create_model!(
+        energy_problem;
+        optimizer,
+        optimizer_parameters,
+        model_file_name,
+        enable_names,
+        direct_model,
+    )
+
+    if assets_base_name != ""
+        @info "Adding exclusive investment constraints for assets with base name: $assets_base_name"
+        add_exclusive_investments!(energy_problem, assets_base_name)
+        if model_file_name != ""
+            @info "Saving model with exclusive constraints to file: $model_file_name"
+            JuMP.write_to_file(energy_problem.model, model_file_name)
+        end
+    end
+
+    @info "Solving model..."
+    TEM.solve_model!(energy_problem)
+
+    @info "Saving solution to database"
+    TEM.save_solution!(energy_problem)
+
+    if output_folder != ""
+        if energy_problem.solved
+            @info "Exporting solution to CSV files"
+            TEM.export_solution_to_csv_files(
+                output_folder,
+                energy_problem,
+            )
+        else
+            @warn "The energy problem has not been solved yet. Skipping export solution."
+        end
+    end
+
+    return energy_problem
 end
